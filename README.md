@@ -16,3 +16,10 @@ Basic command to run spider:
 
 This spider was designed to generate a .csv output file. 
 A sample output file called output.csv is provided in the main folder.
+
+## Potential future updates
+
+- Discuss document type categorization (for example, how should hyperlinks without text, amended documents, cancelled agendas, revised minutes be categorized)
+- Improve unit testing class to test for different configurations of websites (for example, missing field types) to ensure the script works even if the website format is changed
+- Add online testing
+- Sort CSV file by date after creating it
