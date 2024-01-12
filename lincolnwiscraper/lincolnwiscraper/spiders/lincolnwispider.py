@@ -31,34 +31,28 @@ class LincolnwispiderSpider(scrapy.Spider):
         for row in rows:
             date = row.css("td.views-field-field-calendar-date span.date-display-single::text").get()
             title = row.css("td.views-field-title::text").get().replace("\r\n            ", "").replace("          ", "")
-            content += self.parse_documents(date, title, row)
+            content += self.parse_documents(date, title, row.css("td.views-field-field-agendas div ul li"), self.get_agenda_category)
+            content += self.parse_documents(date, title, row.css("td.views-field-field-packets a"), self.get_packet_category)
+            content += self.parse_documents(date, title, row.css("td.views-field-field-minutes div ul li"), self.get_minutes_category)
 
         self.save_to_csv(content)
 
-    # Loop through each individual agenda element
-    def parse_documents(self, date, title, row) -> []:
+    def get_agenda_category(self, link_text) -> str:
+        return "agenda" if link_text is None or "agenda" in link_text.lower() else "other"
+
+    def get_packet_category(self, link_text) -> str:
+        return "agenda_packet" if link_text is None or "packet" == link_text.lower() or "amended" in link_text.lower() else "other"
+
+    def get_minutes_category(self, link_text) -> str:
+        return "minutes" if link_text is None or "minutes" == link_text.lower() else "other"
+
+    def parse_documents(self, date, title, documents, category_function) -> []:
         document_data = []
-        agendas = row.css("td.views-field-field-agendas div ul li")
-        for agenda in agendas:
-            category = agenda.css("a::text").get()  # Link text
-            category = "agenda" if category is None or "agenda" in category.lower() else "other"
-            url = agenda.css("a").attrib["href"]
+        for document in documents:
+            category = document.css("a::text").get()  # Link text
+            category = category_function(category)
+            url = document.css("a").attrib["href"]
             document_data.append([date, title, category, url])
-
-        packets = row.css("td.views-field-field-packets a")
-        for packet in packets:
-            category = packet.css("a::text").get()  # Link text
-            category = "agenda_packet" if category is None or "packet" == category.lower() or "amended" in category.lower() else "other"
-            url = packet.css("a").attrib["href"]
-            document_data.append([date, title, category, url])
-
-        minutes = row.css("td.views-field-field-minutes div ul li")
-        for minute in minutes:
-            category = minute.css("a::text").get()  # Link text
-            category = "minutes" if category is None or "minutes" == category.lower() else "other"
-            url = minute.css("a").attrib["href"]
-            document_data.append([date, title, category, url])
-
         return document_data
 
     # Generate a timestamp for the filename
