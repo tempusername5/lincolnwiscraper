@@ -1,78 +1,75 @@
 import scrapy
-import datetime
-import csv
 
 class LincolnwispiderSpider(scrapy.Spider):
     name = "lincolnwispider"
     allowed_domains = ["co.lincoln.wi.us"]
-    start_urls = ["https://co.lincoln.wi.us/meetings"]
     start_url = "https://co.lincoln.wi.us/meetings"
 
-    # Allow additional argument in crawl command for number of pages
+    # Allow an additional argument for number of pages
+    # This can be entered when calling the scrapy crawl command with the -a flag. For example:
+    # scrapy crawl lincolnwispider -a total_pages=2
     def __init__(self, total_pages=2, **kwargs):
         self.total_pages = total_pages
         super().__init__(**kwargs)
 
-    # Go through each page (specified in constructor)
+    # Parse each page, up to total_pages defined in the constructor
+    # Page numbering for this website is 0-based so page 1 uses ?page=0
     def start_requests(self):
         for i in range(int(self.total_pages)):
             yield scrapy.Request(self.start_url + "?page=" + str(i), callback=self.parse,
                                  errback=self.on_error,
                                  dont_filter=True)
 
-    def on_error(self, failure):
-        self.logger.error(repr(failure))
-
+    # Parse the contents of the webpage and output the contents
+    # -O flag should be used to save the output into a JSON or CSV file
     def parse(self, response):
         rows = response.css("tbody tr")
-        content = [["date", "meeting_title", "category", "URL"]]
+
+        # List of pairs 1.paths for cell element (agenda, packet, minute cells) 2.function to categorize document
+        cells = [
+            {"element_path": "td.views-field-field-agendas div ul li", "type": "agenda", "keyword": "agenda"},
+            {"element_path": "td.views-field-field-packets a", "type": "agenda_packet", "keyword": "packet"},
+            {"element_path": "td.views-field-field-minutes div ul li", "type": "minutes", "keyword": "minutes"}
+        ]
 
         # Loop through each <tr> row in the table
         for row in rows:
-            date = row.css("td.views-field-field-calendar-date span.date-display-single::text").get()
-            title = row.css("td.views-field-title::text").get().replace("\r\n            ", "").replace("          ", "")
-            content += self.parse_documents(date, title, row)
+            date = self.get_date(row)
+            title = self.get_title(row)
 
-        self.save_to_csv(content)
+            # Loop through each cell in the table
+            for cell in cells:
+                element = row.css(cell["element_path"])
 
-    # Loop through each individual agenda element
-    def parse_documents(self, date, title, row) -> []:
-        document_data = []
-        agendas = row.css("td.views-field-field-agendas div ul li")
-        for agenda in agendas:
-            category = agenda.css("a::text").get()  # Link text
-            category = "agenda" if category is None or "agenda" in category.lower() else "other"
-            url = agenda.css("a").attrib["href"]
-            document_data.append([date, title, category, url])
+                # Loop through each <li> or <a> list for each type of cell (agenda, packet, minute)
+                for li in element:
+                    category = li.css("a::text").get()  # Get link text
+                    category = self.get_category(category, cell["type"], cell["keyword"])  # Change category based on link text
+                    url = li.css("a").attrib["href"]  # Get document link
+                    yield {"date": date, "meeting_title": title, "category": category, "URL": url}  # Output contents as one line in the csv file
 
-        packets = row.css("td.views-field-field-packets a")
-        for packet in packets:
-            category = packet.css("a::text").get()  # Link text
-            category = "agenda_packet" if category is None or "packet" == category.lower() or "amended" in category.lower() else "other"
-            url = packet.css("a").attrib["href"]
-            document_data.append([date, title, category, url])
+    # Error callback. Will be called if scrapy encounters errors with the request
+    def on_error(self, failure):
+        self.logger.error(repr(failure))
 
-        minutes = row.css("td.views-field-field-minutes div ul li")
-        for minute in minutes:
-            category = minute.css("a::text").get()  # Link text
-            category = "minutes" if category is None or "minutes" == category.lower() else "other"
-            url = minute.css("a").attrib["href"]
-            document_data.append([date, title, category, url])
+    # Grab the date from the date cell in the table
+    # "Content" attribute is in the format 2023-11-13T13:00:00-06:00, only YYYY-MM-DD is grabbed
+    def get_date(self, element):
+        return element.css("td.views-field-field-calendar-date span.date-display-single").attrib["content"][:10]
 
-        return document_data
+    # Grab the meeting title from the table and remove extraneous spacing
+    def get_title(self, element):
+        return element.css("td.views-field-title::text").get().replace("\r\n            ", "").replace("          ", "")
 
-    # Generate a timestamp for the filename
-    def generate_timestamp(self) -> str:
-        return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S.%f")
-
-    # Save data to csv file
-    def save_to_csv(self, contents):
-        file_name = "CO_LINCOLN_WI_US_MEETINGS-metadata-" + self.generate_timestamp() + ".csv"
-        try:
-            with open(file_name, 'w', newline='') as file:
-                writer = csv.writer(file)
-                for i in range(len(contents)):
-                    writer.writerow(contents[i])
-        except Exception as e:
-            print(e)
-
+    # Documents will be categorized as the specified document_type if they contain any of:
+    # the specified keyword, "amended", "revised", "cancel", or "corrected"
+    # Otherwise they will be categorized as "other"
+    def get_category(self, link_text, document_type, keyword) -> str:
+        if link_text is not None:
+            link_text = link_text.lower()
+        return document_type if (link_text is None or
+                                 keyword == link_text or
+                                 "amended" in link_text or
+                                 "revised" in link_text or
+                                 "cancel" in link_text or
+                                 "corrected" in link_text) else "other"
