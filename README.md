@@ -15,4 +15,4 @@ Basic command to run spider:
 ## Output
 
 This spider was designed to generate a .csv output file. 
-A sample output file called output.csv is available in the lincolnwiscraper folder.
+A sample output file called output.csv is provided in the main folder.
