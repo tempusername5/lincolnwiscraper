@@ -23,3 +23,5 @@ A sample output file called output.csv is provided in the main folder.
 - Improve unit testing class to test for different configurations of websites (for example, missing field types) to ensure the script works even if the website format is changed
 - Add online testing
 - Sort CSV file by date after creating it
+- Middleware for error checking
+- Error checking in parsing functions in case website format changes
